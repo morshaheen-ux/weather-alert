@@ -10,9 +10,12 @@ Channels (each is optional — configured via environment variables / GitHub Sec
     SMTP_USER   full mailbox, e.g. info@your-domain.de
     SMTP_PASS   mailbox password
     MAIL_TO     recipient(s), comma-separated
-  WhatsApp (CallMeBot, free):
+  WhatsApp (CallMeBot, free — personal number only, no groups):
     WHATSAPP_PHONE   e.g. +4917612345678
     WHATSAPP_APIKEY  key you receive from CallMeBot (one-time setup)
+  Telegram (free, supports groups):
+    TELEGRAM_TOKEN    bot token from @BotFather
+    TELEGRAM_CHAT_ID  group chat id (negative number, e.g. -100123456789)
 """
 
 import json
@@ -126,13 +129,25 @@ def send_whatsapp(text):
         print(f"WhatsApp: HTTP {r.status}")
 
 
+def send_telegram(text):
+    token = os.environ.get("TELEGRAM_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not all([token, chat_id]):
+        print("Telegram: skipped (Telegram secrets not set)")
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+    with urllib.request.urlopen(url, data=data, timeout=30) as r:
+        print(f"Telegram: HTTP {r.status}")
+
+
 def main():
     cities = [fetch_city(*c) for c in CITIES]
     text = build_message(cities)
     print(text)
     print("-" * 40)
     errors = []
-    for fn, args in [(send_email, (text, cities[0]["date"])), (send_whatsapp, (text,))]:
+    for fn, args in [(send_email, (text, cities[0]["date"])), (send_whatsapp, (text,)), (send_telegram, (text,))]:
         try:
             fn(*args)
         except Exception as e:  # keep other channels running
