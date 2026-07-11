@@ -1,0 +1,24 @@
+name: Daily weather notification
+
+on:
+  schedule:
+    # 17:30 UTC = 18:30 Berlin (winter) / 19:30 Berlin (summer)
+    - cron: "30 17 * * *"
+  workflow_dispatch: {}   # "Run workflow" button for manual testing
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send tomorrow's forecast
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          WHATSAPP_PHONE: ${{ secrets.WHATSAPP_PHONE }}
+          WHATSAPP_APIKEY: ${{ secrets.WHATSAPP_APIKEY }}
+        run: python3 send_forecast.py
