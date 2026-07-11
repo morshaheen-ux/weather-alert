@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wetter Morgen — Berlin · Bremen · Wien</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0d1b2a;
+    --paper:#f2f6f9;
+    --card:#ffffff;
+    --line:#d7e1ea;
+    --muted:#5b7286;
+    --warm:#e07b39;   /* max temp */
+    --cold:#2a6f9e;   /* min temp */
+    --rain:#3d8bfd;
+    --night:#12263a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Mono',monospace;
+    min-height:100vh;
+  }
+  /* ---- header: bulletin masthead ---- */
+  header{
+    background:var(--night);
+    color:#e8f1f8;
+    padding:26px 20px 22px;
+  }
+  .mast{max-width:1080px;margin:0 auto;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+  .mast h1{
+    font-family:'Bricolage Grotesque',sans-serif;
+    font-weight:800;font-size:clamp(26px,4.5vw,40px);line-height:1.05;letter-spacing:-.01em;
+  }
+  .mast h1 span{color:#7fc2ef}
+  .mast .meta{font-size:12px;color:#9db8cc;text-align:right;line-height:1.7}
+  .lang-btn{
+    background:none;border:1px solid #3c5a75;color:#cfe3f2;font-family:inherit;
+    font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;margin-top:6px;
+  }
+  .lang-btn:hover,.lang-btn:focus-visible{border-color:#7fc2ef;outline:none}
+  /* ---- layout ---- */
+  main{max-width:1080px;margin:0 auto;padding:26px 20px 60px}
+  .status{font-size:13px;color:var(--muted);margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+  /* ---- city card ---- */
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px 20px 16px;display:flex;flex-direction:column;gap:14px;
+  }
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .city{
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:22px;
+  }
+  .country{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+  .icon{font-size:34px;line-height:1}
+  .cond{font-size:14px;font-weight:500}
+  .temps{display:flex;align-items:baseline;gap:14px}
+  .tmax{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:44px;color:var(--warm)}
+  .tmin{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:24px;color:var(--cold)}
+  .facts{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12.5px;color:var(--muted)}
+  .facts b{color:var(--ink);font-weight:600}
+  /* ---- meteogram ---- */
+  .gram{border-top:1px dashed var(--line);padding-top:12px}
+  .gram-label{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .gram svg{width:100%;height:86px;display:block}
+  .err{background:#fdecea;border:1px solid #f5c6c1;color:#8a2e24;padding:14px;border-radius:10px;font-size:13px}
+  footer{max-width:1080px;margin:0 auto;padding:0 20px 40px;font-size:11.5px;color:var(--muted)}
+  footer a{color:var(--cold)}
+  @media (prefers-reduced-motion:no-preference){
+    .card{animation:rise .45s ease both}
+    .card:nth-child(2){animation-delay:.08s}
+    .card:nth-child(3){animation-delay:.16s}
+    @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="mast">
+    <h1 id="title">Wetterbericht <span id="tomorrowWord">morgen</span></h1>
+    <div class="meta">
+      <div id="dateLine">–</div>
+      <div id="updatedLine">–</div>
+      <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="status" id="status">Lade Vorhersage …</div>
+  <div class="grid" id="grid"></div>
+</main>
+<footer>
+  <span id="srcLine">Daten: Open-Meteo (kostenlos, ohne API-Key). Aktualisiert bei jedem Seitenaufruf.</span>
+</footer>
+
+<script>
+const CITIES = [
+  {name:"Berlin",  country:{de:"Deutschland",en:"Germany"}, lat:52.520, lon:13.405, tz:"Europe/Berlin"},
+  {name:"Bremen",  country:{de:"Deutschland",en:"Germany"}, lat:53.079, lon:8.801,  tz:"Europe/Berlin"},
+  {name:"Wien",    nameEn:"Vienna", country:{de:"Österreich",en:"Austria"}, lat:48.208, lon:16.373, tz:"Europe/Vienna"},
+];
+
+/* WMO weather codes → icon + text */
+const WMO = {
+  0:["☀️","Klar","Clear sky"],1:["🌤️","Überwiegend klar","Mostly clear"],
+  2:["⛅","Teils bewölkt","Partly cloudy"],3:["☁️","Bedeckt","Overcast"],
+  45:["🌫️","Nebel","Fog"],48:["🌫️","Reifnebel","Rime fog"],
+  51:["🌦️","Leichter Niesel","Light drizzle"],53:["🌦️","Niesel","Drizzle"],55:["🌧️","Starker Niesel","Heavy drizzle"],
+  61:["🌧️","Leichter Regen","Light rain"],63:["🌧️","Regen","Rain"],65:["🌧️","Starker Regen","Heavy rain"],
+  66:["🌧️","Gefrierender Regen","Freezing rain"],67:["🌧️","Starker gefr. Regen","Heavy freezing rain"],
+  71:["🌨️","Leichter Schneefall","Light snow"],73:["🌨️","Schneefall","Snow"],75:["❄️","Starker Schneefall","Heavy snow"],
+  77:["❄️","Schneegriesel","Snow grains"],
+  80:["🌦️","Leichte Schauer","Light showers"],81:["🌧️","Schauer","Showers"],82:["⛈️","Starke Schauer","Heavy showers"],
+  85:["🌨️","Schneeschauer","Snow showers"],86:["🌨️","Starke Schneeschauer","Heavy snow showers"],
+  95:["⛈️","Gewitter","Thunderstorm"],96:["⛈️","Gewitter mit Hagel","Thunderstorm w/ hail"],99:["⛈️","Schweres Gewitter","Severe thunderstorm"]
+};
+
+const T = {
+  de:{title:"Wetterbericht", tomorrow:"morgen", loading:"Lade Vorhersage …", ok:"Vorhersage für morgen — 3 Städte", updated:"Stand", rain:"Regenrisiko", wind:"Wind max.", sunrise:"Sonnenaufgang", sunset:"Sonnenuntergang", gram:"Temperaturverlauf & Regenrisiko (stündlich, morgen)", err:"Daten konnten nicht geladen werden. Bitte Seite neu laden.", src:"Daten: Open-Meteo (kostenlos, ohne API-Key). Aktualisiert bei jedem Seitenaufruf.", btn:"EN"},
+  en:{title:"Weather bulletin", tomorrow:"tomorrow", loading:"Loading forecast …", ok:"Tomorrow's forecast — 3 cities", updated:"Updated", rain:"Rain risk", wind:"Wind max.", sunrise:"Sunrise", sunset:"Sunset", gram:"Hourly temperature & rain risk (tomorrow)", err:"Could not load data. Please reload the page.", src:"Data: Open-Meteo (free, no API key). Refreshes on every page load.", btn:"DE"}
+};
+let lang = "de";
+let cache = null;
+
+function toggleLang(){ lang = lang==="de" ? "en" : "de"; render(); }
+
+function fmtDate(d){
+  return d.toLocaleDateString(lang==="de"?"de-DE":"en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+}
+function hhmm(iso){ return iso.slice(11,16); }
+
+async function load(){
+  try{
+    const results = await Promise.all(CITIES.map(c=>{
+      const u = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
+        + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,sunrise,sunset`
+        + `&hourly=temperature_2m,precipitation_probability&timezone=${encodeURIComponent(c.tz)}&forecast_days=3`;
+      return fetch(u).then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); });
+    }));
+    cache = results;
+    render();
+  }catch(e){
+    document.getElementById("status").innerHTML = `<div class="err">${T[lang].err} (${e.message})</div>`;
+  }
+}
+
+function meteogram(hourly, dayStr){
+  // pick the 24 hours of tomorrow
+  const idx = [];
+  hourly.time.forEach((t,i)=>{ if(t.startsWith(dayStr)) idx.push(i); });
+  if(!idx.length) return "";
+  const temps = idx.map(i=>hourly.temperature_2m[i]);
+  const rains = idx.map(i=>hourly.precipitation_probability?.[i] ?? 0);
+  const W=320,H=86,pad=6,rainH=22,curveH=H-rainH-pad;
+  const tMin=Math.min(...temps), tMax=Math.max(...temps), span=Math.max(tMax-tMin,1);
+  const x=i=> pad + i*(W-2*pad)/(temps.length-1);
+  const y=t=> pad + (1-(t-tMin)/span)*(curveH-2*pad);
+  let path="M"+temps.map((t,i)=>`${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(" L");
+  // rain bars
+  let bars="";
+  const bw=(W-2*pad)/temps.length-1.5;
+  rains.forEach((p,i)=>{
+    const bh=(p/100)*rainH;
+    bars+=`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(H-bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" fill="var(--rain)" opacity="0.55" rx="1"/>`;
+  });
+  // min/max labels on curve
+  const iMax=temps.indexOf(tMax), iMin=temps.indexOf(tMin);
+  const lbl=(i,t,color)=>`<text x="${x(i).toFixed(1)}" y="${(y(t)-5).toFixed(1)}" font-size="10" font-family="IBM Plex Mono" fill="${color}" text-anchor="middle">${Math.round(t)}°</text>`;
+  // hour ticks 0,6,12,18
+  let ticks="";
+  [0,6,12,18].forEach(h=>{ if(h<temps.length) ticks+=`<text x="${x(h).toFixed(1)}" y="${H-rainH-2}" font-size="8.5" fill="var(--muted)" font-family="IBM Plex Mono" text-anchor="middle">${String(h).padStart(2,"0")}h</text>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">
+    ${bars}
+    <path d="${path}" fill="none" stroke="var(--warm)" stroke-width="2" stroke-linecap="round"/>
+    ${lbl(iMax,tMax,"var(--warm)")}${lbl(iMin,tMin,"var(--cold)")}${ticks}
+  </svg>`;
+}
+
+function render(){
+  const t=T[lang];
+  document.documentElement.lang=lang;
+  document.getElementById("title").firstChild.textContent = t.title+" ";
+  document.getElementById("tomorrowWord").textContent = t.tomorrow;
+  document.getElementById("langBtn").textContent = t.btn;
+  document.getElementById("srcLine").textContent = t.src;
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById("dateLine").textContent = fmtDate(tomorrow);
+  document.getElementById("updatedLine").textContent = t.updated+": "+new Date().toLocaleTimeString(lang==="de"?"de-DE":"en-GB",{hour:"2-digit",minute:"2-digit"});
+  if(!cache){ document.getElementById("status").textContent=t.loading; return; }
+  document.getElementById("status").textContent=t.ok;
+
+  const grid=document.getElementById("grid"); grid.innerHTML="";
+  cache.forEach((d,ci)=>{
+    const c=CITIES[ci];
+    const day=1; // tomorrow = index 1
+    const code=d.daily.weather_code[day];
+    const [icon,de,en]=WMO[code]||["·","–","–"];
+    const name = (lang==="en"&&c.nameEn)?c.nameEn:c.name;
+    const dayStr=d.daily.time[day];
+    grid.insertAdjacentHTML("beforeend",`
+      <article class="card">
+        <div class="card-top">
+          <div><div class="city">${name}</div><div class="country">${c.country[lang]}</div></div>
+          <div class="icon">${icon}</div>
+        </div>
+        <div class="cond">${lang==="de"?de:en}</div>
+        <div class="temps">
+          <span class="tmax">${Math.round(d.daily.temperature_2m_max[day])}°</span>
+          <span class="tmin">${Math.round(d.daily.temperature_2m_min[day])}°</span>
+        </div>
+        <div class="facts">
+          <span>${t.rain}: <b>${d.daily.precipitation_probability_max[day]}%</b></span>
+          <span>${t.wind}: <b>${Math.round(d.daily.wind_speed_10m_max[day])} km/h</b></span>
+          <span>${t.sunrise}: <b>${hhmm(d.daily.sunrise[day])}</b></span>
+          <span>${t.sunset}: <b>${hhmm(d.daily.sunset[day])}</b></span>
+        </div>
+        <div class="gram">
+          <div class="gram-label">${t.gram}</div>
+          ${meteogram(d.hourly,dayStr)}
+        </div>
+      </article>`);
+  });
+}
+
+render();
+load();
+</script>
+</body>
+</html>
